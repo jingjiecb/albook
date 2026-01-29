@@ -1,0 +1,15 @@
+# Binaries
+*.exe
+*.dll
+
+# Database
+*.db
+*.sqlite
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db

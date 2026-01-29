@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Albook - Algorithm Notebook</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Albook</h1>
+            <button id="addBtn" class="btn">New Problem</button>
+        </header>
+
+        <section class="dashboard-stats">
+            <div class="stat-card">
+                <span class="stat-number" id="pendingCount">0</span>
+                <span class="stat-label">Pending Reviews</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="totalCount">0</span>
+                <span class="stat-label">Total Problems</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="poolCount">0</span>
+                <span class="stat-label">In Pool (Mastered)</span>
+            </div>
+        </section>
+
+        <section>
+            <div class="section-title">Problem List</div>
+            <div id="pendingList" class="exercise-list">
+                <!-- Items -->
+            </div>
+            <div class="pagination">
+                <button id="prevBtn" class="secondary-btn" disabled>Previous</button>
+                <span id="pageInfo">Page 1</span>
+                <button id="nextBtn" class="secondary-btn" disabled>Next</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal -->
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle" style="margin-top:0; color:var(--accent)">Add Problem</h2>
+            <form id="addForm">
+                <input type="hidden" id="exerciseId">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="title" required placeholder="e.g. Two Sum">
+                </div>
+                <div class="form-group">
+                    <label>Link (Optional)</label>
+                    <input type="text" id="link" placeholder="e.g. https://leetcode.com/problems/two-sum">
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                    <div>
+                        <label>Source</label>
+                        <select id="source">
+                            <option value="LeetCode">LeetCode</option>
+                            <option value="NewCoder">NewCoder</option>
+                            <option value="HackerRank">HackerRank</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>ID (Optional)</label>
+                        <input type="text" id="sourceId" placeholder="e.g. 1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Resolved Date</label>
+                    <input type="date" id="resolveDate" required>
+                </div>
+                <div class="form-group">
+                    <label>Answer / Hint</label>
+                    <textarea id="answer" rows="3" placeholder="Key intuition..."></textarea>
+                </div>
+                <div class="form-actions-split">
+                    <button type="button" id="deleteBtn" class="btn btn-danger" style="display: none;">Delete</button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="cancelBtn" class="secondary-btn">Cancel</button>
+                        <button type="submit" class="btn">Save</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
