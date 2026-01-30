@@ -1,6 +1,6 @@
 services:
   albook:
-    image: ${DOCKER_IMAGE_NAME:-albook}:edge
+    image: claws059/albook:edge
     container_name: albook
     restart: unless-stopped
     ports:
