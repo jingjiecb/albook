@@ -8,6 +8,8 @@ Albook is a lightweight, single-executable backend application with a modern web
 1.  **Launch**: Run `albook.exe` (or `albook` on Linux/Mac).
     - By default, it runs on port `2100`.
     - To change the port: `./albook.exe -port 8080`.
+    - To specify a database file: `./albook.exe -db ./my_data.db` (Default: `./albook.db`).
+    - If the database file does not exist, a new one will be initialized with a warning message.
 2.  **Access**: Open your browser and navigate to `http://localhost:2100`.
 
 ### Features
@@ -18,7 +20,10 @@ Albook is a lightweight, single-executable backend application with a modern web
 *   **Adding a Problem**:
     *   Click **"New Problem"** on the top right.
     *   Fill in Title, Source (e.g., LeetCode), ID, Resolve Date, and your Answer/Key Intuition.
+    *   **Tags**: Add relevant tags (e.g., "DP", "Greedy") to categorize the problem.
     *   Optionally add a direct Link to the problem.
+*   **Search**:
+    *   Use the search box on the main page to filter problems by Title, ID, Tags, or Description.
 *   **Reviewing**:
     *   The "Problem List" shows pending items by default.
     *   Click **"Mark Reviewed"** to complete a review.
@@ -60,7 +65,7 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
 
 ### API Endpoints
 *   `GET /api/dashboard`: Returns stats (pending, total, pool counts).
-*   `GET /api/exercises`: List exercises (supports `?filter=pending|total|pool&page=N`).
+*   `GET /api/exercises`: List exercises (supports `?filter=pending|total|pool&page=N&search=KEYWORD`).
 *   `POST /api/exercises`: Create a new problem.
 *   `GET /api/exercises/{id}`: Get details of a specific problem.
 *   `PUT /api/exercises/{id}`: Update a problem.
@@ -75,6 +80,8 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
 - [x] Dashboard Statistics
 - [x] Dark Mode UI
 - [x] Pagination & Filtering
+- [x] Search (Title, Tags, ID, Description)
+- [x] Tags Support
 - [x] Single Executable Build
 
 ### Planned (Iteration 5)

@@ -44,6 +44,8 @@ func InitDB(filepath string) {
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN review_count INTEGER DEFAULT 0")
 	// Migration: Add link if not exists
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN link TEXT")
+	// Migration: Add tags if not exists
+	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN tags TEXT")
 }
 
 type Exercise struct {
@@ -52,6 +54,7 @@ type Exercise struct {
 	SourceID       string    `json:"source_id"`
 	Title          string    `json:"title"`
 	Link           string    `json:"link"`
+	Tags           string    `json:"tags"`
 	ResolveDate    time.Time `json:"resolve_date"`
 	NextReviewDate time.Time `json:"next_review_date"`
 	ReviewStage    int       `json:"review_stage"`
@@ -67,35 +70,48 @@ func CreateExercise(e Exercise) (int64, error) {
 	e.ReviewStage = 0
 	e.ReviewCount = 0
 
-	stmt, err := DB.Prepare("INSERT INTO exercises(source, source_id, title, link, resolve_date, next_review_date, review_stage, review_count, answer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := DB.Prepare("INSERT INTO exercises(source, source_id, title, link, tags, resolve_date, next_review_date, review_stage, review_count, answer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(e.Source, e.SourceID, e.Title, e.Link, e.ResolveDate, e.NextReviewDate, e.ReviewStage, e.ReviewCount, e.Answer)
+	res, err := stmt.Exec(e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate, e.NextReviewDate, e.ReviewStage, e.ReviewCount, e.Answer)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
-func GetExercises(filter string, page int, pageSize int) ([]Exercise, int, error) {
+func GetExercises(filter string, search string, page int, pageSize int) ([]Exercise, int, error) {
 	offset := (page - 1) * pageSize
 
-	baseQuery := "SELECT id, source, source_id, title, IFNULL(link, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at FROM exercises"
+	baseQuery := "SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at FROM exercises"
 	countQuery := "SELECT COUNT(*) FROM exercises"
-	whereClause := ""
 
+	whereClause := " WHERE 1=1" // Base where for easier appending
+
+	// Apply Filter
 	switch filter {
 	case "pending":
-		whereClause = " WHERE next_review_date <= datetime('now') AND review_stage < 3"
+		whereClause += " AND next_review_date <= datetime('now') AND review_stage < 3"
 	case "pool":
-		whereClause = " WHERE review_stage >= 3"
+		whereClause += " AND review_stage >= 3"
 	case "total":
-		whereClause = ""
-	default: // Default to pending if unknown, or maybe all? logic says pending is default view.
-		whereClause = " WHERE next_review_date <= datetime('now') AND review_stage < 3"
+		// No extra filter
+	default:
+		whereClause += " AND next_review_date <= datetime('now') AND review_stage < 3"
+	}
+
+	// Apply Search
+	var args []interface{}
+	if search != "" {
+		searchLike := "%" + search + "%"
+		// Search in source_id, title, tags, answer
+		whereClause += " AND (source_id LIKE ? OR title LIKE ? OR tags LIKE ? OR answer LIKE ?)"
+		// We need to pass args to Query.
+		// Note: Count query also needs these args.
+		args = append(args, searchLike, searchLike, searchLike, searchLike)
 	}
 
 	orderBy := " ORDER BY next_review_date ASC"
@@ -107,13 +123,13 @@ func GetExercises(filter string, page int, pageSize int) ([]Exercise, int, error
 
 	// Get Count
 	var totalItems int
-	err := DB.QueryRow(countQuery + whereClause).Scan(&totalItems)
+	err := DB.QueryRow(countQuery+whereClause, args...).Scan(&totalItems)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Get Data
-	rows, err := DB.Query(baseQuery + whereClause + orderBy + limitClause)
+	rows, err := DB.Query(baseQuery+whereClause+orderBy+limitClause, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -122,7 +138,7 @@ func GetExercises(filter string, page int, pageSize int) ([]Exercise, int, error
 	var exercises []Exercise
 	for rows.Next() {
 		var e Exercise
-		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt)
+		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -133,8 +149,8 @@ func GetExercises(filter string, page int, pageSize int) ([]Exercise, int, error
 
 func GetExerciseByID(id int) (*Exercise, error) {
 	var e Exercise
-	err := DB.QueryRow("SELECT id, source, source_id, title, IFNULL(link, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at FROM exercises WHERE id = ?", id).
-		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt)
+	err := DB.QueryRow("SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at FROM exercises WHERE id = ?", id).
+		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +159,8 @@ func GetExerciseByID(id int) (*Exercise, error) {
 
 func UpdateExercise(e Exercise) error {
 	// Only update info fields, not review progress
-	_, err := DB.Exec("UPDATE exercises SET source=?, source_id=?, title=?, link=?, resolve_date=?, answer=? WHERE id=?",
-		e.Source, e.SourceID, e.Title, e.Link, e.ResolveDate, e.Answer, e.ID)
+	_, err := DB.Exec("UPDATE exercises SET source=?, source_id=?, title=?, link=?, tags=?, resolve_date=?, answer=? WHERE id=?",
+		e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate, e.Answer, e.ID)
 	return err
 }
 
@@ -153,21 +169,27 @@ func DeleteExercise(id int) error {
 	return err
 }
 
-func GetStats() (int, int, error) {
+func GetStats() (int, int, int, error) {
 	var total int
 	var pool int
+	var pending int
 
 	err := DB.QueryRow("SELECT COUNT(*) FROM exercises").Scan(&total)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	err = DB.QueryRow("SELECT COUNT(*) FROM exercises WHERE review_stage >= 3").Scan(&pool)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	return total, pool, nil
+	err = DB.QueryRow("SELECT COUNT(*) FROM exercises WHERE next_review_date <= datetime('now') AND review_stage < 3").Scan(&pending)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return total, pool, pending, nil
 }
 
 func PerformReview(id int) error {

@@ -31,7 +31,12 @@
         </section>
 
         <section>
-            <div class="section-title">Problem List</div>
+            <div class="section-header"
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <div class="section-title" style="margin-bottom:0;">Problem List</div>
+                <input type="text" id="searchInput" placeholder="Search..."
+                    style="padding:0.5rem; width:200px; border:1px solid var(--border); border-radius:4px;">
+            </div>
             <div id="pendingList" class="exercise-list">
                 <!-- Items -->
             </div>
@@ -56,6 +61,10 @@
                 <div class="form-group">
                     <label>Link (Optional)</label>
                     <input type="text" id="link" placeholder="e.g. https://leetcode.com/problems/two-sum">
+                </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <input type="text" id="tags" placeholder="e.g. Array, DP">
                 </div>
                 <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
                     <div>

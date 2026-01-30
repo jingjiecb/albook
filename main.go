@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -16,10 +17,15 @@ import (
 var staticFiles embed.FS
 
 func main() {
+	dbPath := flag.String("db", "./albook.db", "Path to the database file")
 	port := flag.Int("port", 2100, "Port for the web server")
 	flag.Parse()
 
-	InitDB("./albook.db")
+	if _, err := os.Stat(*dbPath); os.IsNotExist(err) {
+		fmt.Printf("Warning: Database file '%s' does not exist. Creating a new one.\n", *dbPath)
+	}
+
+	InitDB(*dbPath)
 
 	http.HandleFunc("GET /api/dashboard", handleDashboard)
 	http.HandleFunc("GET /api/exercises", handleListExercises)
@@ -37,30 +43,13 @@ func main() {
 	http.Handle("/", http.FileServer(http.FS(staticFS)))
 
 	addr := fmt.Sprintf(":%d", *port)
+	fmt.Printf("Using database: %s\n", *dbPath)
 	fmt.Printf("Server starting on http://localhost%s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
-	// Dashboard now mainly acts as stats provider. The list is loaded separately via generic API.
-	// But to keep initial load fast or compatible, we can still return pending logic if needed.
-	// However, the user wants "Total" and "Pool" cards to be clickable.
-	// Let's simplify: Dashboard returns stats. Client logic handles fetching list based on active tab.
-	// We'll keep returning pending count/files in case we want immediate render, but for pagination consistency
-	// maybe we should let client fetch list.
-	// Let's stick to the previous pattern: return stats + pending items (first page of pending).
-
-	pending, _, err := GetExercises("pending", 1, 1000) // Get all pending for count, or optimize query
-	// Actually we have GetStats(). GetStats gives Total and Pool. Pending count is separate.
-	// Let's optimize GetStats to return Pending too?
-	// For now, iterate pending list for count is fine if not huge. Or use Separate Count query.
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	total, pool, err := GetStats()
+	total, pool, pending, err := GetStats()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -73,7 +62,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := DashboardResponse{
-		PendingCount: len(pending),
+		PendingCount: pending,
 		TotalCount:   total,
 		PoolCount:    pool,
 	}
@@ -97,9 +86,11 @@ func handleListExercises(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	search := r.URL.Query().Get("search")
+
 	pageSize := 10
 
-	exercises, total, err := GetExercises(filter, page, pageSize)
+	exercises, total, err := GetExercises(filter, search, page, pageSize)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

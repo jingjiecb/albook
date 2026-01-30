@@ -1,5 +1,6 @@
 let state = {
     filter: 'pending',
+    search: '',
     page: 1,
     totalPages: 1
 };
@@ -12,6 +13,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pendingCount').parentElement.addEventListener('click', () => setFilter('pending'));
     document.getElementById('totalCount').parentElement.addEventListener('click', () => setFilter('total'));
     document.getElementById('poolCount').parentElement.addEventListener('click', () => setFilter('pool'));
+
+    // Search Listener
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            state.search = e.target.value;
+            state.page = 1;
+            loadExercises();
+        });
+    }
 
     // Pagination
     document.getElementById('prevBtn').addEventListener('click', () => changePage(-1));
@@ -49,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = {
             title: document.getElementById('title').value,
             link: document.getElementById('link').value,
+            tags: document.getElementById('tags').value,
             source: document.getElementById('source').value,
             source_id: document.getElementById('sourceId').value,
             resolve_date: new Date(document.getElementById('resolveDate').value).toISOString(),
@@ -93,6 +105,7 @@ function openModal(ex = null) {
         document.getElementById('exerciseId').value = ex.id;
         document.getElementById('title').value = ex.title;
         document.getElementById('link').value = ex.link || '';
+        document.getElementById('tags').value = ex.tags || '';
         document.getElementById('source').value = ex.source;
         document.getElementById('sourceId').value = ex.source_id;
         document.getElementById('resolveDate').value = new Date(ex.resolve_date).toISOString().split('T')[0];
@@ -147,7 +160,7 @@ async function loadDashboard() {
 
 async function loadExercises() {
     try {
-        const res = await fetch(`/api/exercises?filter=${state.filter}&page=${state.page}`);
+        const res = await fetch(`/api/exercises?filter=${state.filter}&page=${state.page}&search=${encodeURIComponent(state.search)}`);
         const data = await res.json();
 
         state.totalPages = data.total_pages;
@@ -210,6 +223,7 @@ async function loadExercises() {
                     <h3>${esc(ex.title)}</h3>
                     <div class="exercise-meta">
                         <span class="badge">${esc(ex.source)} ${esc(ex.source_id)}</span>
+                        ${ex.tags ? `<span class="badge" style="background:var(--secondary-bg); color:var(--text);">${esc(ex.tags)}</span>` : ''}
                         <span>Reviews: ${ex.review_count}</span>
                     </div>
                 </div>
