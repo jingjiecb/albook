@@ -61,9 +61,32 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
     ```bash
     go build -o albook.exe
     ```
+    ```
     This creates a single independent binary file including all static assets.
 
-### API Endpoints
+### Docker Deployment
+
+**Prerequisites**: Docker and Docker Compose installed.
+
+1.  **Set Secrets (GitHub Actions)**:
+    For automatic building and pushing, go to your GitHub Repo -> Settings -> Secrets and Variables -> Actions, and add:
+    *   `DOCKER_USERNAME`: Your Docker Hub username.
+    *   `DOCKER_PASSWORD`: Your Docker Hub access token (preferred) or password.
+
+    Once set, pushing to `master`/`main` triggers an `edge` tag build. Pushing a tag like `v1.0.0` triggers a versioned build.
+
+2.  **Run with Docker Compose**:
+    Creates a container running on port 2100 with persistent data in `./data`.
+
+    ```bash
+    # Set the image name (replace 'yourusername' with your actual username)
+    export DOCKER_IMAGE_NAME=yourusername/albook
+    
+    # Run
+    docker-compose up -d
+    ```
+
+    Alternatively, edit `docker-compose.yml` directly.
 *   `GET /api/dashboard`: Returns stats (pending, total, pool counts).
 *   `GET /api/exercises`: List exercises (supports `?filter=pending|total|pool&page=N&search=KEYWORD`).
 *   `POST /api/exercises`: Create a new problem.

@@ -1,0 +1,13 @@
+services:
+  albook:
+    image: ${DOCKER_IMAGE_NAME:-albook}:edge
+    container_name: albook
+    restart: unless-stopped
+    ports:
+      - "2100:2100"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+    # To build locally instead of pulling:
+    # build: .
