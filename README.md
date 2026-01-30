@@ -15,6 +15,7 @@ Albook is a lightweight, single-executable backend application with a modern web
 ### Features
 *   **Dashboard**:
     *   **Pending Reviews**: Count of problems due for review today or overdue.
+    *   **Solved Today**: Count of problems resolved in the current day.
     *   **Reviewed Today**: Count of problems reviewed in the current day.
     *   **Total Problems**: Review all submitted problems.
     *   **In Pool (Mastered)**: Problems that have passed the final review stage.

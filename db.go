@@ -102,6 +102,8 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 		whereClause += " AND review_stage >= 3"
 	case "reviewed_today":
 		whereClause += " AND date(last_reviewed_at) = date('now', 'localtime')"
+	case "solved_today":
+		whereClause += " AND date(resolve_date) = date('now', 'localtime')"
 	case "total":
 		// No extra filter
 	default:
@@ -120,7 +122,7 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	}
 
 	orderBy := " ORDER BY next_review_date ASC"
-	if filter == "total" || filter == "pool" || filter == "reviewed_today" {
+	if filter == "total" || filter == "pool" || filter == "reviewed_today" || filter == "solved_today" {
 		orderBy = " ORDER BY created_at DESC"
 	}
 
@@ -181,27 +183,29 @@ var ReviewIntervals = map[int]int{
 	3: 30, // Pool interval
 }
 
-func GetStats() (int, int, int, int, error) {
+func GetStats() (int, int, int, int, int, error) {
 	var total int
 	var pool int
 	var pending int
 	var reviewedToday int
+	var solvedToday int
 
 	query := `
 		SELECT 
 			COUNT(*),
 			SUM(CASE WHEN review_stage >= 3 THEN 1 ELSE 0 END),
 			SUM(CASE WHEN next_review_date <= datetime('now') AND review_stage < 3 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN date(last_reviewed_at) = date('now', 'localtime') THEN 1 ELSE 0 END)
+			SUM(CASE WHEN date(last_reviewed_at) = date('now', 'localtime') THEN 1 ELSE 0 END),
+			SUM(CASE WHEN date(resolve_date) = date('now', 'localtime') THEN 1 ELSE 0 END)
 		FROM exercises
 	`
 
-	err := DB.QueryRow(query).Scan(&total, &pool, &pending, &reviewedToday)
+	err := DB.QueryRow(query).Scan(&total, &pool, &pending, &reviewedToday, &solvedToday)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, err
 	}
 
-	return total, pool, pending, reviewedToday, nil
+	return total, pool, pending, reviewedToday, solvedToday, nil
 }
 
 func PerformReview(id int) error {

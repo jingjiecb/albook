@@ -1,6 +1,7 @@
 # Binaries
 *.exe
 *.dll
+albook
 
 # Database
 *.db
