@@ -46,6 +46,8 @@ func InitDB(filepath string) {
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN link TEXT")
 	// Migration: Add tags if not exists
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN tags TEXT")
+	// Migration: Add last_reviewed_at if not exists
+	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN last_reviewed_at DATETIME")
 }
 
 type Exercise struct {
@@ -61,6 +63,7 @@ type Exercise struct {
 	ReviewCount    int       `json:"review_count"`
 	Answer         string    `json:"answer"`
 	CreatedAt      time.Time `json:"created_at"`
+	LastReviewedAt time.Time `json:"last_reviewed_at"`
 }
 
 func CreateExercise(e Exercise) (int64, error) {
@@ -97,6 +100,8 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 		whereClause += " AND next_review_date <= datetime('now') AND review_stage < 3"
 	case "pool":
 		whereClause += " AND review_stage >= 3"
+	case "reviewed_today":
+		whereClause += " AND date(last_reviewed_at) = date('now', 'localtime')"
 	case "total":
 		// No extra filter
 	default:
@@ -115,7 +120,7 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	}
 
 	orderBy := " ORDER BY next_review_date ASC"
-	if filter == "total" || filter == "pool" {
+	if filter == "total" || filter == "pool" || filter == "reviewed_today" {
 		orderBy = " ORDER BY created_at DESC"
 	}
 
@@ -169,27 +174,34 @@ func DeleteExercise(id int) error {
 	return err
 }
 
-func GetStats() (int, int, int, error) {
+// ReviewIntervals defines days to add for each stage
+var ReviewIntervals = map[int]int{
+	1: 3,
+	2: 7,
+	3: 30, // Pool interval
+}
+
+func GetStats() (int, int, int, int, error) {
 	var total int
 	var pool int
 	var pending int
+	var reviewedToday int
 
-	err := DB.QueryRow("SELECT COUNT(*) FROM exercises").Scan(&total)
+	query := `
+		SELECT 
+			COUNT(*),
+			SUM(CASE WHEN review_stage >= 3 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN next_review_date <= datetime('now') AND review_stage < 3 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN date(last_reviewed_at) = date('now', 'localtime') THEN 1 ELSE 0 END)
+		FROM exercises
+	`
+
+	err := DB.QueryRow(query).Scan(&total, &pool, &pending, &reviewedToday)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 
-	err = DB.QueryRow("SELECT COUNT(*) FROM exercises WHERE review_stage >= 3").Scan(&pool)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-
-	err = DB.QueryRow("SELECT COUNT(*) FROM exercises WHERE next_review_date <= datetime('now') AND review_stage < 3").Scan(&pending)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-
-	return total, pool, pending, nil
+	return total, pool, pending, reviewedToday, nil
 }
 
 func PerformReview(id int) error {
@@ -201,40 +213,28 @@ func PerformReview(id int) error {
 		return err
 	}
 
-	// Interval logic: 1, 3, 7 days.
-	// Stage 0 (First submit) -> +1 day -> Review 1 (Stage 1)
-	// Review 1 (Stage 1) -> +3 days -> Review 2 (Stage 2)
-	// Review 2 (Stage 2) -> +7 days -> Review 3 (Stage 3/Pool)
-
-	// If currently at stage 0 (meaning waiting for 1st review), and we review it:
-	// New Stage = 1. Next Date = Now + 3 days?
-	// User said: "1 day means after 1 day from the initial resolve date, the system should remind the user it needs reviewing, and 3 days means after the first review, the system should reminder the user to review it 3 days later from the first review day"
-
 	newStage := stage + 1
 	newCount := count + 1
 	daysToAdd := 0
 
-	switch newStage {
-	case 1:
-		daysToAdd = 3
-	case 2:
-		daysToAdd = 7
-	default:
-		// Pool - 3
-		// Check if it's already in pool (>=3)
-		if stage >= 3 {
-			// If reviewing something already in pool, just keep it there, maybe add 30 days?
-			// For now, let's just increment count and keep in pool.
-			newStage = 3   // Cap at 3 for "Pool" state definition
-			daysToAdd = 30 // Periodic review for pool? Or just far future? User said "put it into exercise pool"
+	if val, ok := ReviewIntervals[newStage]; ok {
+		daysToAdd = val
+	} else {
+		if newStage > 3 {
+			// Already in pool, keep adding 30 days or handle as mastered
+			newStage = 3
+			daysToAdd = 30
 		} else {
-			daysToAdd = 36500 // Basically done / in pool
+			// Fallback (e.g. stage 0 which shouldn't happen here usually if logic aligns)
+			// But logic says stage 0 -> 1.
+			// If newStage is 1, it's in map.
+			daysToAdd = 365
 		}
 	}
 
 	now := time.Now()
 	nextDue := now.AddDate(0, 0, daysToAdd)
 
-	_, err = DB.Exec("UPDATE exercises SET review_stage = ?, review_count = ?, next_review_date = ? WHERE id = ?", newStage, newCount, nextDue, id)
+	_, err = DB.Exec("UPDATE exercises SET review_stage = ?, review_count = ?, next_review_date = ?, last_reviewed_at = ? WHERE id = ?", newStage, newCount, nextDue, now, id)
 	return err
 }

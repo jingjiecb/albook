@@ -49,22 +49,24 @@ func main() {
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
-	total, pool, pending, err := GetStats()
+	total, pool, pending, reviewedToday, err := GetStats()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	type DashboardResponse struct {
-		PendingCount int `json:"pending_count"`
-		TotalCount   int `json:"total_count"`
-		PoolCount    int `json:"pool_count"`
+		PendingCount       int `json:"pending_count"`
+		TotalCount         int `json:"total_count"`
+		PoolCount          int `json:"pool_count"`
+		ReviewedTodayCount int `json:"reviewed_today_count"`
 	}
 
 	resp := DashboardResponse{
-		PendingCount: pending,
-		TotalCount:   total,
-		PoolCount:    pool,
+		PendingCount:       pending,
+		TotalCount:         total,
+		PoolCount:          pool,
+		ReviewedTodayCount: reviewedToday,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

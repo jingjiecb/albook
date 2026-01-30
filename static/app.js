@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pendingCount').parentElement.addEventListener('click', () => setFilter('pending'));
     document.getElementById('totalCount').parentElement.addEventListener('click', () => setFilter('total'));
     document.getElementById('poolCount').parentElement.addEventListener('click', () => setFilter('pool'));
+    document.getElementById('reviewedTodayCount').parentElement.addEventListener('click', () => setFilter('reviewed_today'));
 
     // Search Listener
     const searchInput = document.getElementById('searchInput');
@@ -132,6 +133,7 @@ function updateActiveFilterUI() {
     if (state.filter === 'pending') document.getElementById('pendingCount').parentElement.classList.add('active');
     if (state.filter === 'total') document.getElementById('totalCount').parentElement.classList.add('active');
     if (state.filter === 'pool') document.getElementById('poolCount').parentElement.classList.add('active');
+    if (state.filter === 'reviewed_today') document.getElementById('reviewedTodayCount').parentElement.classList.add('active');
 }
 
 async function changePage(delta) {
@@ -150,6 +152,7 @@ async function loadDashboard() {
         document.getElementById('pendingCount').textContent = data.pending_count;
         document.getElementById('totalCount').textContent = data.total_count;
         document.getElementById('poolCount').textContent = data.pool_count;
+        document.getElementById('reviewedTodayCount').textContent = data.reviewed_today_count;
 
         // Initial active state
         updateActiveFilterUI();
