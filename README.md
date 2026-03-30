@@ -108,9 +108,11 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
 - [x] Search (Title, Tags, ID, Description)
 - [x] Tags Support
 - [x] Single Executable Build
-
-### Planned (Iteration 5)
-- [ ] **Pool Sampling & Review**: 
-    - Allow users to click "Review" on a cleared problem.
-    - System selects a problem based on "least reviewed count" and "least recently reviewed".
-    - Display "Reviewed Today" count on the dashboard.
+- [x] Add "Reviewed Today" and "Solved Today" tabs.
+- [x] **Pool Review**: 
+    - Change cleared to a little green badge with "cleared" in it, instead of change the review button to cleared.
+    - Allow users to click "Review" on a cleared problem, then the problem's review count will be further incremented.
+    - Delete the current pool tab, and rename current "total problems" to "problem pool".
+    - Make sure the new problem pool tab sorts the problem by 1) review count from less to more 2) last review date(time) from new to old.
+- [x] **Display last review data**:
+    - Add the last review date on the problem card.

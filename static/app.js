@@ -12,7 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event Listeners for Filters
     document.getElementById('pendingCount').parentElement.addEventListener('click', () => setFilter('pending'));
     document.getElementById('totalCount').parentElement.addEventListener('click', () => setFilter('total'));
-    document.getElementById('poolCount').parentElement.addEventListener('click', () => setFilter('pool'));
     document.getElementById('reviewedTodayCount').parentElement.addEventListener('click', () => setFilter('reviewed_today'));
     document.getElementById('solvedTodayCount').parentElement.addEventListener('click', () => setFilter('solved_today'));
 
@@ -133,7 +132,6 @@ function updateActiveFilterUI() {
     document.querySelectorAll('.stat-card').forEach(el => el.classList.remove('active'));
     if (state.filter === 'pending') document.getElementById('pendingCount').parentElement.classList.add('active');
     if (state.filter === 'total') document.getElementById('totalCount').parentElement.classList.add('active');
-    if (state.filter === 'pool') document.getElementById('poolCount').parentElement.classList.add('active');
     if (state.filter === 'reviewed_today') document.getElementById('reviewedTodayCount').parentElement.classList.add('active');
     if (state.filter === 'solved_today') document.getElementById('solvedTodayCount').parentElement.classList.add('active');
 }
@@ -153,7 +151,6 @@ async function loadDashboard() {
 
         document.getElementById('pendingCount').textContent = data.pending_count;
         document.getElementById('totalCount').textContent = data.total_count;
-        document.getElementById('poolCount').textContent = data.pool_count;
         document.getElementById('reviewedTodayCount').textContent = data.reviewed_today_count;
         document.getElementById('solvedTodayCount').textContent = data.solved_today_count;
 
@@ -199,38 +196,44 @@ async function loadExercises() {
                 linkHtml = `<a href="${ex.link}" target="_blank" class="link-btn">Open Link</a>`;
             }
 
-            // Specific UI tweaks for Pool view?
-            // Maybe hide "Mark Reviewed" if in pool? User didn't specify, but implies "Mastered".
-            // However, user said "then put it into a exercise pool". We can still review them if we want?
-            // I'll keep the review button available everywhere for now, 
-            // but maybe change text if it's already in pool.
-
             // Review Availability Logic
             const nextReview = new Date(ex.next_review_date);
             const now = new Date();
-            const isPending = nextReview <= now; // Should correspond to backend logic roughly, or just check date
+            const isPending = nextReview <= now;
+
+            let reviewedToday = false;
+            if (ex.last_reviewed_at && !ex.last_reviewed_at.startsWith('0001-01')) {
+                const lastRev = new Date(ex.last_reviewed_at);
+                if (lastRev.toDateString() === now.toDateString()) {
+                    reviewedToday = true;
+                }
+            }
 
             let buttonHtml = '';
-            // If strictly enforcing "cannot review until", we check dates.
-            // Note: DB "pending" filter already filters by date.
-            // But if user clicks "Total", they see future items.
-
-            if (isPending && ex.review_stage < 3) {
+            
+            if (isPending || (ex.review_stage >= 3 && !reviewedToday)) {
                 buttonHtml = `<button class="review-btn" onclick="markReviewed(event, ${ex.id})">Mark Reviewed</button>`;
-            } else if (ex.review_stage >= 3) {
-                buttonHtml = `<button class="review-btn" disabled>Cleared</button>`;
+            } else if (ex.review_stage >= 3 && reviewedToday) {
+                buttonHtml = `<button class="review-btn" disabled>Reviewed Today</button>`;
             } else {
-                // Future date
                 buttonHtml = `<button class="review-btn" disabled>Wait until ${nextReview.toLocaleDateString()}</button>`;
+            }
+
+            let clearedBadge = ex.review_stage >= 3 ? `<span class="badge" style="background:var(--success); color:white; font-weight:bold; margin-left: 0.5rem;">Cleared</span>` : '';
+            
+            let lastReviewedStr = "Never";
+            if (ex.review_count > 0 && ex.last_reviewed_at && !ex.last_reviewed_at.startsWith('0001-01')) {
+                lastReviewedStr = new Date(ex.last_reviewed_at).toLocaleDateString() + ' ' + new Date(ex.last_reviewed_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             }
 
             div.innerHTML = `
                 <div class="exercise-info">
-                    <h3>${esc(ex.title)}</h3>
+                    <h3>${esc(ex.title)}${clearedBadge}</h3>
                     <div class="exercise-meta">
                         <span class="badge">${esc(ex.source)} ${esc(ex.source_id)}</span>
                         ${ex.tags ? `<span class="badge" style="background:var(--secondary-bg); color:var(--text);">${esc(ex.tags)}</span>` : ''}
                         <span>Reviews: ${ex.review_count}</span>
+                        <span>Last Review: ${lastReviewedStr}</span>
                     </div>
                 </div>
                 <div class="exercise-actions">

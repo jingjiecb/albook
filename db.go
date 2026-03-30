@@ -6,14 +6,14 @@ import (
 	"log"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var DB *sql.DB
 
 func InitDB(filepath string) {
 	var err error
-	DB, err = sql.Open("sqlite3", filepath)
+	DB, err = sql.Open("sqlite", filepath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func CreateExercise(e Exercise) (int64, error) {
 func GetExercises(filter string, search string, page int, pageSize int) ([]Exercise, int, error) {
 	offset := (page - 1) * pageSize
 
-	baseQuery := "SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at FROM exercises"
+	baseQuery := "SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at FROM exercises"
 	countQuery := "SELECT COUNT(*) FROM exercises"
 
 	whereClause := " WHERE 1=1" // Base where for easier appending
@@ -98,8 +98,6 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	switch filter {
 	case "pending":
 		whereClause += " AND next_review_date <= datetime('now') AND review_stage < 3"
-	case "pool":
-		whereClause += " AND review_stage >= 3"
 	case "reviewed_today":
 		whereClause += " AND date(last_reviewed_at) = date('now', 'localtime')"
 	case "solved_today":
@@ -122,7 +120,9 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	}
 
 	orderBy := " ORDER BY next_review_date ASC"
-	if filter == "total" || filter == "pool" || filter == "reviewed_today" || filter == "solved_today" {
+	if filter == "total" {
+		orderBy = " ORDER BY review_count ASC, last_reviewed_at DESC"
+	} else if filter == "reviewed_today" || filter == "solved_today" {
 		orderBy = " ORDER BY created_at DESC"
 	}
 
@@ -145,9 +145,13 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	var exercises []Exercise
 	for rows.Next() {
 		var e Exercise
-		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt)
+		var lastReviewed sql.NullTime
+		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt, &lastReviewed)
 		if err != nil {
 			return nil, 0, err
+		}
+		if lastReviewed.Valid {
+			e.LastReviewedAt = lastReviewed.Time
 		}
 		exercises = append(exercises, e)
 	}
@@ -156,10 +160,14 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 
 func GetExerciseByID(id int) (*Exercise, error) {
 	var e Exercise
-	err := DB.QueryRow("SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at FROM exercises WHERE id = ?", id).
-		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt)
+	var lastReviewed sql.NullTime
+	err := DB.QueryRow("SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at FROM exercises WHERE id = ?", id).
+		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt, &lastReviewed)
 	if err != nil {
 		return nil, err
+	}
+	if lastReviewed.Valid {
+		e.LastReviewedAt = lastReviewed.Time
 	}
 	return &e, nil
 }
@@ -183,9 +191,8 @@ var ReviewIntervals = map[int]int{
 	3: 30, // Pool interval
 }
 
-func GetStats() (int, int, int, int, int, error) {
+func GetStats() (int, int, int, int, error) {
 	var total int
-	var pool int
 	var pending int
 	var reviewedToday int
 	var solvedToday int
@@ -193,19 +200,18 @@ func GetStats() (int, int, int, int, int, error) {
 	query := `
 		SELECT 
 			COUNT(*),
-			SUM(CASE WHEN review_stage >= 3 THEN 1 ELSE 0 END),
 			SUM(CASE WHEN next_review_date <= datetime('now') AND review_stage < 3 THEN 1 ELSE 0 END),
 			SUM(CASE WHEN date(last_reviewed_at) = date('now', 'localtime') THEN 1 ELSE 0 END),
 			SUM(CASE WHEN date(resolve_date) = date('now', 'localtime') THEN 1 ELSE 0 END)
 		FROM exercises
 	`
 
-	err := DB.QueryRow(query).Scan(&total, &pool, &pending, &reviewedToday, &solvedToday)
+	err := DB.QueryRow(query).Scan(&total, &pending, &reviewedToday, &solvedToday)
 	if err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 
-	return total, pool, pending, reviewedToday, solvedToday, nil
+	return total, pending, reviewedToday, solvedToday, nil
 }
 
 func PerformReview(id int) error {

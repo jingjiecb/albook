@@ -76,7 +76,7 @@ h1 {
 
 .dashboard-stats {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
     margin-bottom: 2rem;
 }
@@ -201,6 +201,8 @@ h1 {
     width: 100%;
     max-width: 500px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .form-group {
