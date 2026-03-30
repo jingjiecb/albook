@@ -121,7 +121,7 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 
 	orderBy := " ORDER BY next_review_date ASC"
 	if filter == "total" {
-		orderBy = " ORDER BY review_count ASC, last_reviewed_at DESC"
+		orderBy = " ORDER BY review_count ASC, last_reviewed_at ASC"
 	} else if filter == "reviewed_today" || filter == "solved_today" {
 		orderBy = " ORDER BY created_at DESC"
 	}
