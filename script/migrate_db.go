@@ -67,7 +67,7 @@ func main() {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT id, resolve_date, next_review_date, created_at, last_reviewed_at FROM exercises")
+	rows, err := db.Query("SELECT id, resolve_date, next_review_date, created_at, last_reviewed_at FROM problems")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	updateStmt, err := tx.Prepare("UPDATE exercises SET resolve_date=?, next_review_date=?, created_at=?, last_reviewed_at=? WHERE id=?")
+	updateStmt, err := tx.Prepare("UPDATE problems SET resolve_date=?, next_review_date=?, created_at=?, last_reviewed_at=? WHERE id=?")
 	if err != nil {
 		log.Fatal(err)
 	}

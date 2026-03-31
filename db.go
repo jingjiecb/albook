@@ -22,7 +22,10 @@ func InitDB(filepath string) {
 		log.Fatal(err)
 	}
 
-	createTableSQL := `CREATE TABLE IF NOT EXISTS exercises (
+	// Rename legacy table "exercises" to "problems" if it exists
+	_, _ = DB.Exec("ALTER TABLE exercises RENAME TO problems")
+
+	createTableSQL := `CREATE TABLE IF NOT EXISTS problems (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		source TEXT,
 		source_id TEXT,
@@ -43,26 +46,26 @@ func InitDB(filepath string) {
 	}
 
 	// Migrations for existing database schema versions
-	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN review_count INTEGER DEFAULT 0")
-	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN link TEXT")
-	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN tags TEXT")
-	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN last_reviewed_at DATETIME")
+	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN review_count INTEGER DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN link TEXT")
+	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN tags TEXT")
+	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN last_reviewed_at DATETIME")
 }
 
-const exerciseSelectFields = "id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at"
+const problemSelectFields = "id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at"
 
 // scanner interface allows using the same scan function for sql.Row and sql.Rows
 type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanExercise(r scanner) (Exercise, error) {
-	var e Exercise
+func scanProblem(r scanner) (Problem, error) {
+	var e Problem
 	var resolveDate, nextReviewDate, createdAt int64
 	var lastReviewed sql.NullInt64
 	err := r.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
 	if err != nil {
-		return Exercise{}, err
+		return Problem{}, err
 	}
 	e.ResolveDate = time.Unix(resolveDate, 0)
 	e.NextReviewDate = time.Unix(nextReviewDate, 0)
@@ -73,7 +76,7 @@ func scanExercise(r scanner) (Exercise, error) {
 	return e, nil
 }
 
-type Exercise struct {
+type Problem struct {
 	ID             int       `json:"id"`
 	Source         string    `json:"source"`
 	SourceID       string    `json:"source_id"`
@@ -89,14 +92,14 @@ type Exercise struct {
 	LastReviewedAt time.Time `json:"last_reviewed_at"`
 }
 
-func CreateExercise(e Exercise) (int64, error) {
+func CreateProblem(e Problem) (int64, error) {
 	// Calculate initial next_review_date based on resolve_date
 	// Stage 0 -> 1 day after resolve date
 	e.NextReviewDate = e.ResolveDate.AddDate(0, 0, 1)
 	e.ReviewStage = 0
 	e.ReviewCount = 0
 
-	stmt, err := DB.Prepare("INSERT INTO exercises(source, source_id, title, link, tags, resolve_date, next_review_date, review_stage, review_count, answer, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := DB.Prepare("INSERT INTO problems(source, source_id, title, link, tags, resolve_date, next_review_date, review_stage, review_count, answer, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, err
 	}
@@ -109,11 +112,11 @@ func CreateExercise(e Exercise) (int64, error) {
 	return res.LastInsertId()
 }
 
-func GetExercises(filter string, search string, page int, pageSize int) ([]Exercise, int, error) {
+func GetProblems(filter string, search string, page int, pageSize int) ([]Problem, int, error) {
 	offset := (page - 1) * pageSize
 
-	baseQuery := "SELECT " + exerciseSelectFields + " FROM exercises"
-	countQuery := "SELECT COUNT(*) FROM exercises"
+	baseQuery := "SELECT " + problemSelectFields + " FROM problems"
+	countQuery := "SELECT COUNT(*) FROM problems"
 
 	whereClause := " WHERE 1=1" // Base where for easier appending
 
@@ -158,35 +161,35 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	}
 	defer rows.Close()
 
-	var exercises []Exercise
+	var problems []Problem
 	for rows.Next() {
-		e, err := scanExercise(rows)
+		e, err := scanProblem(rows)
 		if err != nil {
 			return nil, 0, err
 		}
-		exercises = append(exercises, e)
+		problems = append(problems, e)
 	}
-	return exercises, totalItems, nil
+	return problems, totalItems, nil
 }
 
-func GetExerciseByID(id int) (*Exercise, error) {
-	row := DB.QueryRow("SELECT "+exerciseSelectFields+" FROM exercises WHERE id = ?", id)
-	e, err := scanExercise(row)
+func GetProblemByID(id int) (*Problem, error) {
+	row := DB.QueryRow("SELECT "+problemSelectFields+" FROM problems WHERE id = ?", id)
+	e, err := scanProblem(row)
 	if err != nil {
 		return nil, err
 	}
 	return &e, nil
 }
 
-func UpdateExercise(e Exercise) error {
+func UpdateProblem(e Problem) error {
 	// Only update info fields, not review progress
-	_, err := DB.Exec("UPDATE exercises SET source=?, source_id=?, title=?, link=?, tags=?, resolve_date=?, answer=? WHERE id=?",
+	_, err := DB.Exec("UPDATE problems SET source=?, source_id=?, title=?, link=?, tags=?, resolve_date=?, answer=? WHERE id=?",
 		e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate.Unix(), e.Answer, e.ID)
 	return err
 }
 
-func DeleteExercise(id int) error {
-	_, err := DB.Exec("DELETE FROM exercises WHERE id = ?", id)
+func DeleteProblem(id int) error {
+	_, err := DB.Exec("DELETE FROM problems WHERE id = ?", id)
 	return err
 }
 
@@ -209,7 +212,7 @@ func GetStats() (int, int, int, int, error) {
 			SUM(CASE WHEN next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3 THEN 1 ELSE 0 END),
 			SUM(CASE WHEN date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END),
 			SUM(CASE WHEN date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END)
-		FROM exercises
+		FROM problems
 	`
 
 	err := DB.QueryRow(query).Scan(&total, &pending, &reviewedToday, &solvedToday)
@@ -224,7 +227,7 @@ func PerformReview(id int) error {
 	// Fetch current stage and review count
 	var stage int
 	var count int
-	err := DB.QueryRow("SELECT review_stage, IFNULL(review_count, 0) FROM exercises WHERE id = ?", id).Scan(&stage, &count)
+	err := DB.QueryRow("SELECT review_stage, IFNULL(review_count, 0) FROM problems WHERE id = ?", id).Scan(&stage, &count)
 	if err != nil {
 		return err
 	}
@@ -247,6 +250,6 @@ func PerformReview(id int) error {
 	now := time.Now()
 	nextDue := now.AddDate(0, 0, daysToAdd)
 
-	_, err = DB.Exec("UPDATE exercises SET review_stage = ?, review_count = ?, next_review_date = ?, last_reviewed_at = ? WHERE id = ?", newStage, newCount, nextDue.Unix(), now.Unix(), id)
+	_, err = DB.Exec("UPDATE problems SET review_stage = ?, review_count = ?, next_review_date = ?, last_reviewed_at = ? WHERE id = ?", newStage, newCount, nextDue.Unix(), now.Unix(), id)
 	return err
 }

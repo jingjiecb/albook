@@ -121,12 +121,12 @@ h1 {
     padding-left: 0.8rem;
 }
 
-.exercise-list {
+.problem-list {
     display: grid;
     gap: 1rem;
 }
 
-.exercise-card {
+.problem-card {
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -137,16 +137,16 @@ h1 {
     transition: transform 0.1s;
 }
 
-.exercise-card:hover {
+.problem-card:hover {
     border-color: var(--accent);
 }
 
-.exercise-info h3 {
+.problem-info h3 {
     margin: 0 0 0.25rem 0;
     font-size: 1rem;
 }
 
-.exercise-meta {
+.problem-meta {
     font-size: 0.85rem;
     color: var(--text-secondary);
     display: flex;
@@ -297,7 +297,7 @@ button:disabled,
     pointer-events: none;
 }
 
-.exercise-actions {
+.problem-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;

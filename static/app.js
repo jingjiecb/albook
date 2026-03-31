@@ -7,7 +7,7 @@ let state = {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
-    loadExercises();
+    loadProblems();
 
     // Event Listeners for Filters
     document.getElementById('pendingCount').parentElement.addEventListener('click', () => setFilter('pending'));
@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.addEventListener('input', (e) => {
             state.search = e.target.value;
             state.page = 1;
-            loadExercises();
+            loadProblems();
         });
     }
 
@@ -38,15 +38,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('deleteBtn').addEventListener('click', async () => {
-        const id = document.getElementById('exerciseId').value;
+        const id = document.getElementById('problemId').value;
         if (!id || !confirm("Are you sure you want to delete this problem? This cannot be undone.")) return;
 
         try {
-            const res = await fetch(`/api/exercises/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/problems/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 document.getElementById('addModal').classList.remove('active');
                 loadDashboard();
-                loadExercises();
+                loadProblems();
             }
         } catch (err) {
             console.error(err);
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('addForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const idStr = document.getElementById('exerciseId').value;
+        const idStr = document.getElementById('problemId').value;
         const id = idStr ? parseInt(idStr) : 0;
 
         const data = {
@@ -71,13 +71,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             let res;
             if (id > 0) {
-                res = await fetch(`/api/exercises/${id}`, {
+                res = await fetch(`/api/problems/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
             } else {
-                res = await fetch('/api/exercises', {
+                res = await fetch('/api/problems', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 document.getElementById('addModal').classList.remove('active');
                 loadDashboard();
-                loadExercises();
+                loadProblems();
             }
         } catch (err) {
             console.error(err);
@@ -103,7 +103,7 @@ function openModal(ex = null) {
 
     if (ex) {
         document.getElementById('modalTitle').textContent = "Edit Problem";
-        document.getElementById('exerciseId').value = ex.id;
+        document.getElementById('problemId').value = ex.id;
         document.getElementById('title').value = ex.title;
         document.getElementById('link').value = ex.link || '';
         document.getElementById('tags').value = ex.tags || '';
@@ -115,7 +115,7 @@ function openModal(ex = null) {
     } else {
         document.getElementById('modalTitle').textContent = "Add Problem";
         form.reset();
-        document.getElementById('exerciseId').value = "";
+        document.getElementById('problemId').value = "";
         document.getElementById('resolveDate').valueAsDate = new Date();
         deleteBtn.style.display = 'none';
     }
@@ -125,7 +125,7 @@ async function setFilter(filter) {
     state.filter = filter;
     state.page = 1;
     updateActiveFilterUI();
-    loadExercises();
+    loadProblems();
 }
 
 function updateActiveFilterUI() {
@@ -140,7 +140,7 @@ async function changePage(delta) {
     const newPage = state.page + delta;
     if (newPage > 0 && newPage <= state.totalPages) {
         state.page = newPage;
-        loadExercises();
+        loadProblems();
     }
 }
 
@@ -161,9 +161,9 @@ async function loadDashboard() {
     }
 }
 
-async function loadExercises() {
+async function loadProblems() {
     try {
-        const res = await fetch(`/api/exercises?filter=${state.filter}&page=${state.page}&search=${encodeURIComponent(state.search)}`);
+        const res = await fetch(`/api/problems?filter=${state.filter}&page=${state.page}&search=${encodeURIComponent(state.search)}`);
         const data = await res.json();
 
         state.totalPages = data.total_pages;
@@ -181,7 +181,7 @@ async function loadExercises() {
 
         data.data.forEach(ex => {
             const div = document.createElement('div');
-            div.className = 'exercise-card';
+            div.className = 'problem-card';
             div.style.cursor = 'pointer';
 
             // Click to Edit
@@ -227,16 +227,16 @@ async function loadExercises() {
             }
 
             div.innerHTML = `
-                <div class="exercise-info">
+                <div class="problem-info">
                     <h3>${esc(ex.title)}${clearedBadge}</h3>
-                    <div class="exercise-meta">
+                    <div class="problem-meta">
                         <span class="badge">${esc(ex.source)} ${esc(ex.source_id)}</span>
                         ${ex.tags ? `<span class="badge" style="background:var(--secondary-bg); color:var(--text);">${esc(ex.tags)}</span>` : ''}
                         <span>Reviews: ${ex.review_count}</span>
                         <span>Last Review: ${lastReviewedStr}</span>
                     </div>
                 </div>
-                <div class="exercise-actions">
+                <div class="problem-actions">
                     ${linkHtml}
                     ${buttonHtml}
                 </div>
@@ -244,7 +244,7 @@ async function loadExercises() {
             list.appendChild(div);
         });
     } catch (err) {
-        console.error("Failed to load exercises", err);
+        console.error("Failed to load problems", err);
     }
 }
 
@@ -254,10 +254,10 @@ async function markReviewed(event, id) {
     if (event) event.stopPropagation();
     if (!confirm("Confirm you have reviewed this problem?")) return;
     try {
-        const res = await fetch(`/api/exercises/${id}/review`, { method: 'POST' });
+        const res = await fetch(`/api/problems/${id}/review`, { method: 'POST' });
         if (res.ok) {
             loadDashboard(); // Refresh stats
-            loadExercises(); // Refresh list
+            loadProblems(); // Refresh list
         }
     } catch (err) {
         alert("Error reviewing: " + err);

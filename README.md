@@ -90,12 +90,12 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
 
     Alternatively, edit `docker-compose.yml` directly.
 *   `GET /api/dashboard`: Returns stats (pending, total, pool counts).
-*   `GET /api/exercises`: List exercises (supports `?filter=pending|total|pool&page=N&search=KEYWORD`).
-*   `POST /api/exercises`: Create a new problem.
-*   `GET /api/exercises/{id}`: Get details of a specific problem.
-*   `PUT /api/exercises/{id}`: Update a problem.
-*   `DELETE /api/exercises/{id}`: Delete a problem.
-*   `POST /api/exercises/{id}/review`: Mark a problem as reviewed.
+*   `GET /api/problems`: List problems (supports `?filter=pending|total|pool&page=N&search=KEYWORD`).
+*   `POST /api/problems`: Create a new problem.
+*   `GET /api/problems/{id}`: Get details of a specific problem.
+*   `PUT /api/problems/{id}`: Update a problem.
+*   `DELETE /api/problems/{id}`: Delete a problem.
+*   `POST /api/problems/{id}/review`: Mark a problem as reviewed.
 
 ## Feature Roadmap
 

@@ -28,12 +28,12 @@ func main() {
 	InitDB(*dbPath)
 
 	http.HandleFunc("GET /api/dashboard", handleDashboard)
-	http.HandleFunc("GET /api/exercises", handleListExercises)
-	http.HandleFunc("POST /api/exercises", handleCreateExercise)
-	http.HandleFunc("GET /api/exercises/{id}", handleGetExercise)
-	http.HandleFunc("PUT /api/exercises/{id}", handleUpdateExercise)
-	http.HandleFunc("DELETE /api/exercises/{id}", handleDeleteExercise)
-	http.HandleFunc("POST /api/exercises/{id}/review", handleReviewExercise)
+	http.HandleFunc("GET /api/problems", handleListProblems)
+	http.HandleFunc("POST /api/problems", handleCreateProblem)
+	http.HandleFunc("GET /api/problems/{id}", handleGetProblem)
+	http.HandleFunc("PUT /api/problems/{id}", handleUpdateProblem)
+	http.HandleFunc("DELETE /api/problems/{id}", handleDeleteProblem)
+	http.HandleFunc("POST /api/problems/{id}/review", handleReviewProblem)
 
 	// Static files
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -73,7 +73,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func handleListExercises(w http.ResponseWriter, r *http.Request) {
+func handleListProblems(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("filter")
 	if filter == "" {
 		filter = "pending"
@@ -92,14 +92,14 @@ func handleListExercises(w http.ResponseWriter, r *http.Request) {
 
 	pageSize := 10
 
-	exercises, total, err := GetExercises(filter, search, page, pageSize)
+	problems, total, err := GetProblems(filter, search, page, pageSize)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	type ListResponse struct {
-		Data       []Exercise `json:"data"`
+		Data       []Problem `json:"data"`
 		Total      int        `json:"total"`
 		Page       int        `json:"page"`
 		TotalPages int        `json:"total_pages"`
@@ -111,7 +111,7 @@ func handleListExercises(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := ListResponse{
-		Data:       exercises,
+		Data:       problems,
 		Total:      total,
 		Page:       page,
 		TotalPages: totalPages,
@@ -121,8 +121,8 @@ func handleListExercises(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func handleCreateExercise(w http.ResponseWriter, r *http.Request) {
-	var e Exercise
+func handleCreateProblem(w http.ResponseWriter, r *http.Request) {
+	var e Problem
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -132,7 +132,7 @@ func handleCreateExercise(w http.ResponseWriter, r *http.Request) {
 		e.ResolveDate = time.Now()
 	}
 
-	id, err := CreateExercise(e)
+	id, err := CreateProblem(e)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -142,14 +142,14 @@ func handleCreateExercise(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
 }
 
-func handleGetExercise(w http.ResponseWriter, r *http.Request) {
+func handleGetProblem(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	e, err := GetExerciseByID(id)
+	e, err := GetProblemByID(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -157,7 +157,7 @@ func handleGetExercise(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(e)
 }
 
-func handleUpdateExercise(w http.ResponseWriter, r *http.Request) {
+func handleUpdateProblem(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -165,14 +165,14 @@ func handleUpdateExercise(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var e Exercise
+	var e Problem
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	e.ID = id
 
-	if err := UpdateExercise(e); err != nil {
+	if err := UpdateProblem(e); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -180,7 +180,7 @@ func handleUpdateExercise(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 }
 
-func handleDeleteExercise(w http.ResponseWriter, r *http.Request) {
+func handleDeleteProblem(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -188,7 +188,7 @@ func handleDeleteExercise(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := DeleteExercise(id); err != nil {
+	if err := DeleteProblem(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -197,7 +197,7 @@ func handleDeleteExercise(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status": "deleted"}`))
 }
 
-func handleReviewExercise(w http.ResponseWriter, r *http.Request) {
+func handleReviewProblem(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
