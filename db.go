@@ -73,13 +73,13 @@ func CreateExercise(e Exercise) (int64, error) {
 	e.ReviewStage = 0
 	e.ReviewCount = 0
 
-	stmt, err := DB.Prepare("INSERT INTO exercises(source, source_id, title, link, tags, resolve_date, next_review_date, review_stage, review_count, answer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := DB.Prepare("INSERT INTO exercises(source, source_id, title, link, tags, resolve_date, next_review_date, review_stage, review_count, answer, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate, e.NextReviewDate, e.ReviewStage, e.ReviewCount, e.Answer)
+	res, err := stmt.Exec(e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate.Unix(), e.NextReviewDate.Unix(), e.ReviewStage, e.ReviewCount, e.Answer, time.Now().Unix())
 	if err != nil {
 		return 0, err
 	}
@@ -97,15 +97,15 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	// Apply Filter
 	switch filter {
 	case "pending":
-		whereClause += " AND next_review_date <= datetime('now') AND review_stage < 3"
+		whereClause += " AND next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3"
 	case "reviewed_today":
-		whereClause += " AND date(last_reviewed_at) = date('now', 'localtime')"
+		whereClause += " AND date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime')"
 	case "solved_today":
-		whereClause += " AND date(resolve_date) = date('now', 'localtime')"
+		whereClause += " AND date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime')"
 	case "total":
 		// No extra filter
 	default:
-		whereClause += " AND next_review_date <= datetime('now') AND review_stage < 3"
+		whereClause += " AND next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3"
 	}
 
 	// Apply Search
@@ -145,13 +145,17 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 	var exercises []Exercise
 	for rows.Next() {
 		var e Exercise
-		var lastReviewed sql.NullTime
-		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt, &lastReviewed)
+		var resolveDate, nextReviewDate, createdAt int64
+		var lastReviewed sql.NullInt64
+		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
 		if err != nil {
 			return nil, 0, err
 		}
+		e.ResolveDate = time.Unix(resolveDate, 0)
+		e.NextReviewDate = time.Unix(nextReviewDate, 0)
+		e.CreatedAt = time.Unix(createdAt, 0)
 		if lastReviewed.Valid {
-			e.LastReviewedAt = lastReviewed.Time
+			e.LastReviewedAt = time.Unix(lastReviewed.Int64, 0)
 		}
 		exercises = append(exercises, e)
 	}
@@ -160,14 +164,18 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 
 func GetExerciseByID(id int) (*Exercise, error) {
 	var e Exercise
-	var lastReviewed sql.NullTime
+	var resolveDate, nextReviewDate, createdAt int64
+	var lastReviewed sql.NullInt64
 	err := DB.QueryRow("SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at FROM exercises WHERE id = ?", id).
-		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &e.ResolveDate, &e.NextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &e.CreatedAt, &lastReviewed)
+		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
 	if err != nil {
 		return nil, err
 	}
+	e.ResolveDate = time.Unix(resolveDate, 0)
+	e.NextReviewDate = time.Unix(nextReviewDate, 0)
+	e.CreatedAt = time.Unix(createdAt, 0)
 	if lastReviewed.Valid {
-		e.LastReviewedAt = lastReviewed.Time
+		e.LastReviewedAt = time.Unix(lastReviewed.Int64, 0)
 	}
 	return &e, nil
 }
@@ -175,7 +183,7 @@ func GetExerciseByID(id int) (*Exercise, error) {
 func UpdateExercise(e Exercise) error {
 	// Only update info fields, not review progress
 	_, err := DB.Exec("UPDATE exercises SET source=?, source_id=?, title=?, link=?, tags=?, resolve_date=?, answer=? WHERE id=?",
-		e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate, e.Answer, e.ID)
+		e.Source, e.SourceID, e.Title, e.Link, e.Tags, e.ResolveDate.Unix(), e.Answer, e.ID)
 	return err
 }
 
@@ -200,9 +208,9 @@ func GetStats() (int, int, int, int, error) {
 	query := `
 		SELECT 
 			COUNT(*),
-			SUM(CASE WHEN next_review_date <= datetime('now') AND review_stage < 3 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN date(last_reviewed_at) = date('now', 'localtime') THEN 1 ELSE 0 END),
-			SUM(CASE WHEN date(resolve_date) = date('now', 'localtime') THEN 1 ELSE 0 END)
+			SUM(CASE WHEN next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END),
+			SUM(CASE WHEN date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END)
 		FROM exercises
 	`
 
@@ -245,6 +253,6 @@ func PerformReview(id int) error {
 	now := time.Now()
 	nextDue := now.AddDate(0, 0, daysToAdd)
 
-	_, err = DB.Exec("UPDATE exercises SET review_stage = ?, review_count = ?, next_review_date = ?, last_reviewed_at = ? WHERE id = ?", newStage, newCount, nextDue, now, id)
+	_, err = DB.Exec("UPDATE exercises SET review_stage = ?, review_count = ?, next_review_date = ?, last_reviewed_at = ? WHERE id = ?", newStage, newCount, nextDue.Unix(), now.Unix(), id)
 	return err
 }
