@@ -27,27 +27,50 @@ func InitDB(filepath string) {
 		source TEXT,
 		source_id TEXT,
 		title TEXT NOT NULL,
+		link TEXT,
+		tags TEXT,
 		resolve_date DATETIME NOT NULL,
 		next_review_date DATETIME NOT NULL,
 		review_stage INTEGER DEFAULT 0,
 		review_count INTEGER DEFAULT 0,
 		answer TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_reviewed_at DATETIME
 	);`
 
-	_, err = DB.Exec(createTableSQL)
-	if err != nil {
+	if _, err = DB.Exec(createTableSQL); err != nil {
 		log.Fatal(err)
 	}
 
-	// Migration: Add review_count if not exists
+	// Migrations for existing database schema versions
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN review_count INTEGER DEFAULT 0")
-	// Migration: Add link if not exists
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN link TEXT")
-	// Migration: Add tags if not exists
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN tags TEXT")
-	// Migration: Add last_reviewed_at if not exists
 	_, _ = DB.Exec("ALTER TABLE exercises ADD COLUMN last_reviewed_at DATETIME")
+}
+
+const exerciseSelectFields = "id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at"
+
+// scanner interface allows using the same scan function for sql.Row and sql.Rows
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanExercise(r scanner) (Exercise, error) {
+	var e Exercise
+	var resolveDate, nextReviewDate, createdAt int64
+	var lastReviewed sql.NullInt64
+	err := r.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
+	if err != nil {
+		return Exercise{}, err
+	}
+	e.ResolveDate = time.Unix(resolveDate, 0)
+	e.NextReviewDate = time.Unix(nextReviewDate, 0)
+	e.CreatedAt = time.Unix(createdAt, 0)
+	if lastReviewed.Valid {
+		e.LastReviewedAt = time.Unix(lastReviewed.Int64, 0)
+	}
+	return e, nil
 }
 
 type Exercise struct {
@@ -89,7 +112,7 @@ func CreateExercise(e Exercise) (int64, error) {
 func GetExercises(filter string, search string, page int, pageSize int) ([]Exercise, int, error) {
 	offset := (page - 1) * pageSize
 
-	baseQuery := "SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at FROM exercises"
+	baseQuery := "SELECT " + exerciseSelectFields + " FROM exercises"
 	countQuery := "SELECT COUNT(*) FROM exercises"
 
 	whereClause := " WHERE 1=1" // Base where for easier appending
@@ -102,10 +125,8 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 		whereClause += " AND date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime')"
 	case "solved_today":
 		whereClause += " AND date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime')"
-	case "total":
+	default: // "total" defaults to here
 		// No extra filter
-	default:
-		whereClause += " AND next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3"
 	}
 
 	// Apply Search
@@ -119,12 +140,7 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 		args = append(args, searchLike, searchLike, searchLike, searchLike)
 	}
 
-	orderBy := " ORDER BY next_review_date ASC"
-	if filter == "total" {
-		orderBy = " ORDER BY review_count ASC, last_reviewed_at ASC"
-	} else if filter == "reviewed_today" || filter == "solved_today" {
-		orderBy = " ORDER BY created_at DESC"
-	}
+	orderBy := " ORDER BY last_reviewed_at ASC, resolve_date ASC"
 
 	limitClause := fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, offset)
 
@@ -144,18 +160,9 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 
 	var exercises []Exercise
 	for rows.Next() {
-		var e Exercise
-		var resolveDate, nextReviewDate, createdAt int64
-		var lastReviewed sql.NullInt64
-		err = rows.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
+		e, err := scanExercise(rows)
 		if err != nil {
 			return nil, 0, err
-		}
-		e.ResolveDate = time.Unix(resolveDate, 0)
-		e.NextReviewDate = time.Unix(nextReviewDate, 0)
-		e.CreatedAt = time.Unix(createdAt, 0)
-		if lastReviewed.Valid {
-			e.LastReviewedAt = time.Unix(lastReviewed.Int64, 0)
 		}
 		exercises = append(exercises, e)
 	}
@@ -163,19 +170,10 @@ func GetExercises(filter string, search string, page int, pageSize int) ([]Exerc
 }
 
 func GetExerciseByID(id int) (*Exercise, error) {
-	var e Exercise
-	var resolveDate, nextReviewDate, createdAt int64
-	var lastReviewed sql.NullInt64
-	err := DB.QueryRow("SELECT id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at FROM exercises WHERE id = ?", id).
-		Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
+	row := DB.QueryRow("SELECT "+exerciseSelectFields+" FROM exercises WHERE id = ?", id)
+	e, err := scanExercise(row)
 	if err != nil {
 		return nil, err
-	}
-	e.ResolveDate = time.Unix(resolveDate, 0)
-	e.NextReviewDate = time.Unix(nextReviewDate, 0)
-	e.CreatedAt = time.Unix(createdAt, 0)
-	if lastReviewed.Valid {
-		e.LastReviewedAt = time.Unix(lastReviewed.Int64, 0)
 	}
 	return &e, nil
 }
@@ -237,17 +235,13 @@ func PerformReview(id int) error {
 
 	if val, ok := ReviewIntervals[newStage]; ok {
 		daysToAdd = val
+	} else if newStage > 3 {
+		// Already in pool, keep adding 30 days or handle as mastered
+		newStage = 3
+		daysToAdd = 30
 	} else {
-		if newStage > 3 {
-			// Already in pool, keep adding 30 days or handle as mastered
-			newStage = 3
-			daysToAdd = 30
-		} else {
-			// Fallback (e.g. stage 0 which shouldn't happen here usually if logic aligns)
-			// But logic says stage 0 -> 1.
-			// If newStage is 1, it's in map.
-			daysToAdd = 365
-		}
+		// Fallback for unknown state
+		daysToAdd = 365
 	}
 
 	now := time.Now()
