@@ -33,7 +33,12 @@ Albook is a lightweight, single-executable backend application with a modern web
     *   If a problem is not yet due, the button will show **"Wait until [Date]"**.
 *   **Editing & Deleting**:
     *   Click on any problem card (not the buttons) to edit its details.
-    *   To **Delete**, click the "Delete" button in the bottom-left of the edit modal.
+    *   To **Delete**, click the "Delete" button in the bottom-left of the edit modal. This moves the problem to Trash.
+*   **Trash**:
+    *   The **Trash** tab on the dashboard shows how many problems are in the trash.
+    *   Click the Trash tab to view trashed problems.
+    *   From the trash view, you can **Restore** a problem back to your active set or **Permanently Delete** it.
+    *   You can also click on a trashed problem to view its details.
 *   **Mastered Problems**:
     *   Once a problem reaches the "Pool" stage (after 3 successful reviews), it is marked as **"Cleared"**.
 
@@ -89,13 +94,14 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
     ```
 
     Alternatively, edit `docker-compose.yml` directly.
-*   `GET /api/dashboard`: Returns stats (pending, total, pool counts).
-*   `GET /api/problems`: List problems (supports `?filter=pending|total|pool&page=N&search=KEYWORD`).
+*   `GET /api/dashboard`: Returns stats (pending, total, pool, trash counts).
+*   `GET /api/problems`: List problems (supports `?filter=pending|total|trash&page=N&search=KEYWORD`).
 *   `POST /api/problems`: Create a new problem.
 *   `GET /api/problems/{id}`: Get details of a specific problem.
 *   `PUT /api/problems/{id}`: Update a problem.
-*   `DELETE /api/problems/{id}`: Delete a problem.
+*   `DELETE /api/problems/{id}`: Soft-delete (move to trash) or permanently delete (if already in trash).
 *   `POST /api/problems/{id}/review`: Mark a problem as reviewed.
+*   `PUT /api/problems/{id}/restore`: Restore a trashed problem.
 
 ## Feature Roadmap
 
@@ -116,3 +122,7 @@ Prerequisite: [Go](https://go.dev/dl/) installed.
     - Make sure the new problem pool tab sorts the problem by 1) review count from less to more 2) last review date(time) from new to old.
 - [x] **Display last review data**:
     - Add the last review date on the problem card.
+- [x] **Trash Bin**:
+    - Soft-delete: deleting a problem moves it to trash instead of permanently removing it.
+    - Restore: trashed problems can be restored back to the active set.
+    - Permanent delete: delete from trash to permanently remove.

@@ -50,9 +50,10 @@ func InitDB(filepath string) {
 	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN link TEXT")
 	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN tags TEXT")
 	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN last_reviewed_at DATETIME")
+	_, _ = DB.Exec("ALTER TABLE problems ADD COLUMN deleted_at DATETIME")
 }
 
-const problemSelectFields = "id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at"
+const problemSelectFields = "id, source, source_id, title, IFNULL(link, ''), IFNULL(tags, ''), resolve_date, next_review_date, review_stage, review_count, answer, created_at, last_reviewed_at, deleted_at"
 
 // scanner interface allows using the same scan function for sql.Row and sql.Rows
 type scanner interface {
@@ -63,7 +64,8 @@ func scanProblem(r scanner) (Problem, error) {
 	var e Problem
 	var resolveDate, nextReviewDate, createdAt int64
 	var lastReviewed sql.NullInt64
-	err := r.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed)
+	var deletedAt sql.NullInt64
+	err := r.Scan(&e.ID, &e.Source, &e.SourceID, &e.Title, &e.Link, &e.Tags, &resolveDate, &nextReviewDate, &e.ReviewStage, &e.ReviewCount, &e.Answer, &createdAt, &lastReviewed, &deletedAt)
 	if err != nil {
 		return Problem{}, err
 	}
@@ -73,23 +75,28 @@ func scanProblem(r scanner) (Problem, error) {
 	if lastReviewed.Valid {
 		e.LastReviewedAt = time.Unix(lastReviewed.Int64, 0)
 	}
+	if deletedAt.Valid {
+		t := time.Unix(deletedAt.Int64, 0)
+		e.DeletedAt = &t
+	}
 	return e, nil
 }
 
 type Problem struct {
-	ID             int       `json:"id"`
-	Source         string    `json:"source"`
-	SourceID       string    `json:"source_id"`
-	Title          string    `json:"title"`
-	Link           string    `json:"link"`
-	Tags           string    `json:"tags"`
-	ResolveDate    time.Time `json:"resolve_date"`
-	NextReviewDate time.Time `json:"next_review_date"`
-	ReviewStage    int       `json:"review_stage"`
-	ReviewCount    int       `json:"review_count"`
-	Answer         string    `json:"answer"`
-	CreatedAt      time.Time `json:"created_at"`
-	LastReviewedAt time.Time `json:"last_reviewed_at"`
+	ID             int        `json:"id"`
+	Source         string     `json:"source"`
+	SourceID       string     `json:"source_id"`
+	Title          string     `json:"title"`
+	Link           string     `json:"link"`
+	Tags           string     `json:"tags"`
+	ResolveDate    time.Time  `json:"resolve_date"`
+	NextReviewDate time.Time  `json:"next_review_date"`
+	ReviewStage    int        `json:"review_stage"`
+	ReviewCount    int        `json:"review_count"`
+	Answer         string     `json:"answer"`
+	CreatedAt      time.Time  `json:"created_at"`
+	LastReviewedAt time.Time  `json:"last_reviewed_at"`
+	DeletedAt      *time.Time `json:"deleted_at"`
 }
 
 func CreateProblem(e Problem) (int64, error) {
@@ -118,7 +125,7 @@ func GetProblems(filter string, search string, page int, pageSize int) ([]Proble
 	baseQuery := "SELECT " + problemSelectFields + " FROM problems"
 	countQuery := "SELECT COUNT(*) FROM problems"
 
-	whereClause := " WHERE 1=1" // Base where for easier appending
+	whereClause := " WHERE deleted_at IS NULL"
 
 	// Apply Filter
 	switch filter {
@@ -128,6 +135,8 @@ func GetProblems(filter string, search string, page int, pageSize int) ([]Proble
 		whereClause += " AND date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime')"
 	case "solved_today":
 		whereClause += " AND date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime')"
+	case "trash":
+		whereClause = " WHERE deleted_at IS NOT NULL"
 	default: // "total" defaults to here
 		// No extra filter
 	}
@@ -143,7 +152,12 @@ func GetProblems(filter string, search string, page int, pageSize int) ([]Proble
 		args = append(args, searchLike, searchLike, searchLike, searchLike)
 	}
 
-	orderBy := " ORDER BY last_reviewed_at ASC, resolve_date ASC"
+	var orderBy string
+	if filter == "trash" {
+		orderBy = " ORDER BY deleted_at DESC"
+	} else {
+		orderBy = " ORDER BY last_reviewed_at ASC, resolve_date ASC"
+	}
 
 	limitClause := fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, offset)
 
@@ -188,8 +202,18 @@ func UpdateProblem(e Problem) error {
 	return err
 }
 
-func DeleteProblem(id int) error {
-	_, err := DB.Exec("DELETE FROM problems WHERE id = ?", id)
+func SoftDeleteProblem(id int) error {
+	_, err := DB.Exec("UPDATE problems SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", time.Now().Unix(), id)
+	return err
+}
+
+func HardDeleteProblem(id int) error {
+	_, err := DB.Exec("DELETE FROM problems WHERE id = ? AND deleted_at IS NOT NULL", id)
+	return err
+}
+
+func RestoreProblem(id int) error {
+	_, err := DB.Exec("UPDATE problems SET deleted_at = NULL WHERE id = ?", id)
 	return err
 }
 
@@ -207,12 +231,13 @@ func GetStats() (int, int, int, int, error) {
 	var solvedToday int
 
 	query := `
-		SELECT 
+		SELECT
 			COUNT(*),
-			SUM(CASE WHEN next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END),
-			SUM(CASE WHEN date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END)
+			IFNULL(SUM(CASE WHEN next_review_date <= CAST(strftime('%s', 'now') AS INTEGER) AND review_stage < 3 THEN 1 ELSE 0 END), 0),
+			IFNULL(SUM(CASE WHEN date(last_reviewed_at, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END), 0),
+			IFNULL(SUM(CASE WHEN date(resolve_date, 'unixepoch', 'localtime') = date('now', 'localtime') THEN 1 ELSE 0 END), 0)
 		FROM problems
+		WHERE deleted_at IS NULL
 	`
 
 	err := DB.QueryRow(query).Scan(&total, &pending, &reviewedToday, &solvedToday)
@@ -221,6 +246,12 @@ func GetStats() (int, int, int, int, error) {
 	}
 
 	return total, pending, reviewedToday, solvedToday, nil
+}
+
+func GetTrashCount() (int, error) {
+	var count int
+	err := DB.QueryRow("SELECT COUNT(*) FROM problems WHERE deleted_at IS NOT NULL").Scan(&count)
+	return count, err
 }
 
 func PerformReview(id int) error {

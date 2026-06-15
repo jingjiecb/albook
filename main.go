@@ -34,6 +34,7 @@ func main() {
 	http.HandleFunc("PUT /api/problems/{id}", handleUpdateProblem)
 	http.HandleFunc("DELETE /api/problems/{id}", handleDeleteProblem)
 	http.HandleFunc("POST /api/problems/{id}/review", handleReviewProblem)
+	http.HandleFunc("PUT /api/problems/{id}/restore", handleRestoreProblem)
 
 	// Static files
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -55,11 +56,18 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trashCount, err := GetTrashCount()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	type DashboardResponse struct {
 		PendingCount       int `json:"pending_count"`
 		TotalCount         int `json:"total_count"`
 		ReviewedTodayCount int `json:"reviewed_today_count"`
 		SolvedTodayCount   int `json:"solved_today_count"`
+		TrashCount         int `json:"trash_count"`
 	}
 
 	resp := DashboardResponse{
@@ -67,6 +75,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		TotalCount:         total,
 		ReviewedTodayCount: reviewedToday,
 		SolvedTodayCount:   solvedToday,
+		TrashCount:         trashCount,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -188,13 +197,48 @@ func handleDeleteProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := DeleteProblem(id); err != nil {
+	problem, err := GetProblemByID(id)
+	if err != nil {
+		http.Error(w, "Problem not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if problem.DeletedAt != nil {
+		if err := HardDeleteProblem(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(`{"status": "permanently_deleted"}`))
+	} else {
+		if err := SoftDeleteProblem(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(`{"status": "trashed"}`))
+	}
+}
+
+func handleRestoreProblem(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := GetProblemByID(id); err != nil {
+		http.Error(w, "Problem not found", http.StatusNotFound)
+		return
+	}
+
+	if err := RestoreProblem(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "deleted"}`))
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status": "restored"}`))
 }
 
 func handleReviewProblem(w http.ResponseWriter, r *http.Request) {

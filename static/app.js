@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('totalCount').parentElement.addEventListener('click', () => setFilter('total'));
     document.getElementById('reviewedTodayCount').parentElement.addEventListener('click', () => setFilter('reviewed_today'));
     document.getElementById('solvedTodayCount').parentElement.addEventListener('click', () => setFilter('solved_today'));
+    document.getElementById('trashCount').parentElement.addEventListener('click', () => setFilter('trash'));
 
     // Search Listener
     const searchInput = document.getElementById('searchInput');
@@ -39,7 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('deleteBtn').addEventListener('click', async () => {
         const id = document.getElementById('problemId').value;
-        if (!id || !confirm("Are you sure you want to delete this problem? This cannot be undone.")) return;
+        const confirmMsg = state.filter === 'trash'
+            ? "Permanently delete this problem? This cannot be undone."
+            : "Move this problem to trash?";
+        if (!id || !confirm(confirmMsg)) return;
 
         try {
             const res = await fetch(`/api/problems/${id}`, { method: 'DELETE' });
@@ -134,6 +138,7 @@ function updateActiveFilterUI() {
     if (state.filter === 'total') document.getElementById('totalCount').parentElement.classList.add('active');
     if (state.filter === 'reviewed_today') document.getElementById('reviewedTodayCount').parentElement.classList.add('active');
     if (state.filter === 'solved_today') document.getElementById('solvedTodayCount').parentElement.classList.add('active');
+    if (state.filter === 'trash') document.getElementById('trashCount').parentElement.classList.add('active');
 }
 
 async function changePage(delta) {
@@ -153,6 +158,7 @@ async function loadDashboard() {
         document.getElementById('totalCount').textContent = data.total_count;
         document.getElementById('reviewedTodayCount').textContent = data.reviewed_today_count;
         document.getElementById('solvedTodayCount').textContent = data.solved_today_count;
+        document.getElementById('trashCount').textContent = data.trash_count;
 
         // Initial active state
         updateActiveFilterUI();
@@ -184,9 +190,7 @@ async function loadProblems() {
             div.className = 'problem-card';
             div.style.cursor = 'pointer';
 
-            // Click to Edit
             div.addEventListener('click', (e) => {
-                // Prevent open if clicking link or review button
                 if (e.target.tagName === 'A' || e.target.classList.contains('review-btn')) return;
                 openModal(ex);
             });
@@ -196,27 +200,33 @@ async function loadProblems() {
                 linkHtml = `<a href="${ex.link}" target="_blank" class="link-btn">Open Link</a>`;
             }
 
-            // Review Availability Logic
-            const nextReview = new Date(ex.next_review_date);
-            const now = new Date();
-            const isPending = nextReview <= now;
-
-            let reviewedToday = false;
-            if (ex.last_reviewed_at && !ex.last_reviewed_at.startsWith('0001-01')) {
-                const lastRev = new Date(ex.last_reviewed_at);
-                if (lastRev.toDateString() === now.toDateString()) {
-                    reviewedToday = true;
-                }
-            }
-
             let buttonHtml = '';
-            
-            if (isPending || (ex.review_stage >= 3 && !reviewedToday)) {
-                buttonHtml = `<button class="review-btn" onclick="markReviewed(event, ${ex.id})">Mark Reviewed</button>`;
-            } else if (ex.review_stage >= 3 && reviewedToday) {
-                buttonHtml = `<button class="review-btn" disabled>Reviewed Today</button>`;
+
+            if (state.filter === 'trash') {
+                buttonHtml = `
+                    <button class="review-btn" onclick="restoreProblem(event, ${ex.id})">Restore</button>
+                    <button class="review-btn btn-danger" onclick="permanentlyDelete(event, ${ex.id})">Delete</button>
+                `;
             } else {
-                buttonHtml = `<button class="review-btn" disabled>Wait until ${nextReview.toLocaleDateString()}</button>`;
+                const nextReview = new Date(ex.next_review_date);
+                const now = new Date();
+                const isPending = nextReview <= now;
+
+                let reviewedToday = false;
+                if (ex.last_reviewed_at && !ex.last_reviewed_at.startsWith('0001-01')) {
+                    const lastRev = new Date(ex.last_reviewed_at);
+                    if (lastRev.toDateString() === now.toDateString()) {
+                        reviewedToday = true;
+                    }
+                }
+
+                if (isPending || (ex.review_stage >= 3 && !reviewedToday)) {
+                    buttonHtml = `<button class="review-btn" onclick="markReviewed(event, ${ex.id})">Mark Reviewed</button>`;
+                } else if (ex.review_stage >= 3 && reviewedToday) {
+                    buttonHtml = `<button class="review-btn" disabled>Reviewed Today</button>`;
+                } else {
+                    buttonHtml = `<button class="review-btn" disabled>Wait until ${nextReview.toLocaleDateString()}</button>`;
+                }
             }
 
             let clearedBadge = ex.review_stage >= 3 ? `<span class="badge" style="background:var(--success); color:white; font-weight:bold; margin-left: 0.5rem;">Cleared</span>` : '';
@@ -261,6 +271,35 @@ async function markReviewed(event, id) {
         }
     } catch (err) {
         alert("Error reviewing: " + err);
+    }
+}
+
+async function restoreProblem(event, id) {
+    if (event) event.stopPropagation();
+    try {
+        const res = await fetch(`/api/problems/${id}/restore`, { method: 'PUT' });
+        if (res.ok) {
+            loadDashboard();
+            loadProblems();
+        } else {
+            alert("Failed to restore problem.");
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function permanentlyDelete(event, id) {
+    if (event) event.stopPropagation();
+    if (!confirm("Permanently delete this problem? This cannot be undone.")) return;
+    try {
+        const res = await fetch(`/api/problems/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            loadDashboard();
+            loadProblems();
+        }
+    } catch (err) {
+        console.error(err);
     }
 }
 
